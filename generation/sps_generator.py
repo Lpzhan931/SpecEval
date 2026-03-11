@@ -91,9 +91,8 @@ class SpSGenerator(BaseGenerator):
                     d_i = torch.argmax(out.logits[0, -1, :]).item()
                     draft_tokens.append(d_i)
                     d_in = torch.tensor([[d_i]], device=d_device)
-                    # 遇到 EOS 提前结束草稿
                     if d_i == self.tokenizer.eos_token_id:
-                        break
+                        break   # 遇到 EOS 提前结束草稿
                         
                 actual_gamma = len(draft_tokens)
                 
@@ -112,7 +111,7 @@ class SpSGenerator(BaseGenerator):
                 target_preds = torch.argmax(out.logits[0], dim=-1).tolist()
                 
                 # -------------------------
-                # Step 2.3: 对齐与接受 (Match)
+                # Step 2.3: 对齐与接受
                 # -------------------------
                 k = 0
                 for i in range(actual_gamma):

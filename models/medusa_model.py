@@ -8,13 +8,21 @@ from pathlib import Path
 
 class ResBlock(nn.Module):
     """Medusa 标准的残差块"""
-    def __init__(self, hidden_size):
+    def __init__(self, hidden_size, hidden_size_sm=None):
         super().__init__()
-        self.linear = nn.Linear(hidden_size, hidden_size)
+        if hidden_size_sm is not None:
+            self.linear = nn.Linear(hidden_size, hidden_size_sm)
+        else:
+            self.linear = nn.Linear(hidden_size, hidden_size)
         self.act = nn.SiLU()
 
+        if hidden_size_sm is not None:
+            self.shortcut = nn.Linear(hidden_size, hidden_size_sm, bias=False)
+        else:
+            self.shortcut = nn.Identity()
+
     def forward(self, x):
-        return x + self.act(self.linear(x))
+        return self.shortcut(x) + self.act(self.linear(x))
 
 # Medusa
 class MedusaHead(nn.Module):
@@ -76,21 +84,23 @@ class MedusaSpSHead(nn.Module):
     def __init__(self, num_heads, num_layers, hidden_size, hidden_size_sm, vocab_size):
         super().__init__()
         self.num_heads = num_heads
+
+        self.medusa_head = nn.ModuleList()
+        for _ in range(num_heads):
+            layers = []            
+            layers.append(ResBlock(hidden_size, hidden_size_sm))  # 第一层降维
+            for _ in range(num_layers - 1):  # 后面的层在小维度下运算
+                layers.append(ResBlock(hidden_size_sm, hidden_size_sm))
+            self.medusa_head.append(nn.Sequential(*layers))
         
-        # 1. 大模型特征提取 (标准的 Medusa Heads)
-        self.medusa_head = nn.ModuleList([
-            nn.Sequential(*([ResBlock(hidden_size)] * num_layers))
-            for _ in range(num_heads)
-        ])
-        
-        # 2. 特征融合与映射层
-        self.fc_layer = nn.Linear(hidden_size + hidden_size_sm, hidden_size)
-        self.lm_head_sps = nn.Linear(hidden_size, vocab_size, bias=False)
+        # 特征融合与映射层
+        self.fc_layer = nn.Linear(hidden_size_sm + hidden_size_sm, hidden_size_sm)
+        self.lm_head_sps = nn.Linear(hidden_size_sm, vocab_size, bias=False)
         
     def predict_token(self, m_hidden, s_hidden):
         """
         输入: 
-            m_hidden: 大模型该头的输出特征 [batch, seq, hidden_size]
+            m_hidden: 大模型该头的输出特征 [batch, seq, hidden_size_sm]
             s_hidden: 小模型该步的隐状态 [batch, seq, hidden_size_sm]
         """
         concat_hidden = torch.cat([m_hidden, s_hidden], dim=-1)

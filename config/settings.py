@@ -8,12 +8,16 @@ class Config:
     TEMPERATURE = 0.0      # Greedy Decoding (T=0)
 
     # Base Model
-    TARGET_MODEL_PATH = "/home/share/models/Qwen3-8B"
+    # TARGET_MODEL_PATH = "/home/share/models/Qwen3-8B"
+    # TARGET_MODEL_PATH = "/home/share/models/Llama-2-7b"
+    # TARGET_MODEL_PATH = "/home/pzli/Project/Spec/SpS/models/llama-68m"
+    TARGET_MODEL_PATH = "/home/share/models/Llama-2-7b-chat-hf/"
 
     # 1. SpS Draft Model
     # DRAFT_MODEL_PATH = "/home/share/models/Llama-3.2-1B"
     # DRAFT_MODEL_PATH = "/home/share/models/Qwen2.5-0.5B"
-    DRAFT_MODEL_PATH = "/home/share/models/Qwen3-0.6B"
+    # DRAFT_MODEL_PATH = "/home/share/models/Qwen3-0.6B"
+    DRAFT_MODEL_PATH = "/home/pzli/Project/Spec/SpS/models/llama-68m"
 
     GAMMA = 4              # 每次 Draft 生成的 token 数量
 
@@ -44,7 +48,9 @@ class Config:
 
     # 2. Medusa_SpS
     # MEDUSA_SPS_PATH = "/home/pzli/Project/Spec/SpS/260309/output/output_qwen3_20260309_1606_medusa_mlp__medusa_4_lr_0.001_layers_1/checkpoint-50/"
-    MEDUSA_SPS_PATH = "/home/pzli/Project/Spec/SpS/260309/output/output_qwen3_20260309_184343_medusa_mlp__medusa_4_lr_0.001_layers_1"
+    # MEDUSA_SPS_PATH = "/home/pzli/Project/Spec/SpS/260309/output/output_qwen3_20260309_184343_medusa_mlp__medusa_4_lr_0.001_layers_1"
+    # MEDUSA_SPS_PATH = "/home/pzli/Project/Spec/SpS/260310/output/output_llama2_20260310_095024_medusa_mlp_Llama-2-7b_medusa_4_lr_0.001_layers_1/checkpoint-50"
+    MEDUSA_SPS_PATH = "/home/pzli/Project/Spec/SpS/260310/output/output_llama2_chat_20260311_092139_medusa_mlp__medusa_4_lr_0.001_layers_1/"
     # 如果加载的是单独的 safetensors 且没有 config.json，则使用以下备用参数
     MEDUSA_SPS_FALLBACK_HEADS = 4
     MEDUSA_SPS_FALLBACK_LAYERS = 1
