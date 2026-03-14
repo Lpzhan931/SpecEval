@@ -109,7 +109,10 @@ class MedusaSpSHead(nn.Module):
         return logits
 
 
-def load_medusa_sps_head(target_config, draft_config, path, device, dtype, fallback_heads, fallback_layers):
+def load_medusa_sps_head(
+        target_config, draft_config, path, device, dtype, fallback_heads, fallback_layers, 
+        draft_model=None, draft_from_trainable_param=False
+    ):
     """
     支持从 checkpoint/model.safetensors 或 export/medusa_sps_heads.safetensors 加载
     """
@@ -143,22 +146,61 @@ def load_medusa_sps_head(target_config, draft_config, path, device, dtype, fallb
     state_dict = load_file(weight_path)
     
     # 清洗 keys，兼容 HF Trainer 自动包裹的 `model.` 前缀
-    clean_state_dict = {}
+    clean_state_dict = {}   # medusa_head/fc_layer/lm_head_sps
+    draft_state_dict = {}
+
     for k, v in state_dict.items():
-        new_key = k.replace("model.medusa_head", "medusa_head") \
-                   .replace("model.fc_layer", "fc_layer") \
-                   .replace("model.lm_head_sps", "lm_head_sps")
-        clean_state_dict[new_key] = v
+        if k.startswith("small_model."):
+            # 提取小模型的权重，去除 "small_model." 前缀，恢复为标准的 HuggingFace 模型 key (如 model.layers.0...)
+            draft_state_dict[k.replace("small_model.", "", 1)] = v
+        elif k.startswith("base_model."):
+            # 忽略大模型的权重
+            continue
+        else:
+            # 提取 Medusa / FC / SpS 头的权重
+            new_key = k.replace("model.medusa_head", "medusa_head") \
+                       .replace("model.fc_layer", "fc_layer") \
+                       .replace("model.lm_head_sps", "lm_head_sps")
+            clean_state_dict[new_key] = v
         
+    # 加载小模型权重
+    if draft_from_trainable_param and draft_model is not None:
+        if len(draft_state_dict) > 0:
+            print(f"\n[MAR] Safely loading Draft Model weights into Accelerate model...")
+            missing_d = []
+            unexpected_d = [k for k in draft_state_dict.keys() if k not in draft_model.state_dict()]
+            
+            # 使用安全的 copy_ 机制，避免破坏 device_map 的 hook
+            for name, param in draft_model.named_parameters():
+                if name in draft_state_dict:
+                    # 关键: 确保将保存的权重转移到参数所在的 device 和对应的数据类型 dtype 上
+                    target_device = param.device
+                    target_dtype = param.dtype
+                    saved_tensor = draft_state_dict[name].to(device=target_device, dtype=target_dtype)
+                    
+                    with torch.no_grad():
+                        param.copy_(saved_tensor)
+                else:
+                    missing_d.append(name)
+                    
+            print(f"[MAR] Draft Model weights loaded successfully.")
+            if len(unexpected_d) > 0:
+                print(f"[MAR WARNING] Draft model unexpected keys: {unexpected_d[:5]} ...")
+            if len(missing_d) > 0:
+                print(f"[MAR WARNING] Draft model missing keys: {missing_d[:5]} ...")
+        else:
+            print(f"\n[MAR WARNING] `draft_from_trainable_param` is True, but no `small_model.*` keys found in checkpoint!")
+
+    # 加载 Medusa 头权重
     missing, unexpected = model.load_state_dict(clean_state_dict, strict=False)
     
-    print(f"\n[Medusa-SpS] Weights loaded from {weight_path}")
-    print(f"[Medusa-SpS] num_heads: {num_heads}, num_layers: {num_layers}")
+    print(f"\n[MAR] MAR Weights loaded from {weight_path}")
+    print(f"[MAR] num_heads: {num_heads}, num_layers: {num_layers}")
     
     # 过滤出真正缺少的组件权重（过滤掉 base_model 的权重提示）
     real_missing = [k for k in missing if k.startswith(("medusa_head", "fc_layer", "lm_head_sps"))]
     if len(real_missing) > 0:
-        print(f"[Medusa-SpS WARNING] Missing essential keys: {real_missing}")
+        print(f"[MAR WARNING] Missing essential keys: {real_missing}")
         
     model.eval()
     return model

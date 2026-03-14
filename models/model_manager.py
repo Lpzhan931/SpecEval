@@ -2,10 +2,18 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from config.settings import Config
 from .medusa_model import load_medusa_head, load_medusa_sps_head
+import copy
 
 
 class ModelManager:
-    def __init__(self, load_target=True, load_draft=False, load_medusa=False, load_medusa_sps=False):
+    def __init__(
+        self, 
+        load_target=True, 
+        load_draft=False, 
+        load_medusa=False, 
+        load_medusa_sps=False,
+        draft_from_trainable_param=False
+    ):
         self.tokenizer = None
         self.target_model = None
         self.draft_model = None
@@ -28,13 +36,16 @@ class ModelManager:
             ).eval()
 
         if load_draft or load_medusa_sps:
-            print(f"Loading Draft Model from {Config.DRAFT_MODEL_PATH} ...")
+            print(f"Loading Draft Model Base Architecture from {Config.DRAFT_MODEL_PATH} ...")
             self.draft_model = AutoModelForCausalLM.from_pretrained(
                 Config.DRAFT_MODEL_PATH,
                 torch_dtype=Config.DTYPE,
                 device_map="auto",
                 trust_remote_code=True
             ).eval()
+
+        # TODO DEBUG
+        original_model = copy.deepcopy(self.draft_model)
 
         if load_medusa and self.target_model is not None:
             print(f"Loading Medusa Head from {Config.MEDUSA_HEAD_PATH} ...")
@@ -48,7 +59,7 @@ class ModelManager:
             )
         
         if load_medusa_sps and self.target_model is not None and self.draft_model is not None:
-            print(f"Loading Medusa-SpS Head from {Config.MEDUSA_SPS_PATH} ...")
+            print(f"Loading MAR Params from {Config.MEDUSA_SPS_PATH} ...")
             self.medusa_sps_head = load_medusa_sps_head(
                 target_config=self.target_model.config,
                 draft_config=self.draft_model.config,
@@ -56,8 +67,19 @@ class ModelManager:
                 device=self.target_model.device,
                 dtype=Config.DTYPE,
                 fallback_heads=Config.MEDUSA_SPS_FALLBACK_HEADS,
-                fallback_layers=Config.MEDUSA_SPS_FALLBACK_LAYERS
+                fallback_layers=Config.MEDUSA_SPS_FALLBACK_LAYERS,
+                draft_model=self.draft_model,
+                draft_from_trainable_param=draft_from_trainable_param
             )
+
+        # TODO DEBUG
+        total_diff = sum(
+            (p1 - p2).abs().sum().item()
+            for p1, p2 in zip(original_model.parameters(), self.draft_model.parameters())
+        )
+        print(f"总绝对差异: {total_diff:.6f}")
+        del original_model
+
 
     def cleanup(self):
         """释放显存"""

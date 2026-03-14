@@ -20,6 +20,7 @@ def parse_args():
                         help="Number of few-shot examples for lm-eval")
     parser.add_argument("--limit", type=int, default=5,
                         help="Limit the number of evaluation samples (for fast testing)")
+    parser.add_argument("--draft_from_trainable_param", action="store_true", help="whether to use the weight from the trainable params.")
     return parser.parse_args()
 
 def main():
@@ -37,7 +38,8 @@ def main():
         load_target=True, 
         load_draft=load_draft, 
         load_medusa=load_medusa,
-        load_medusa_sps=load_medusa_sps
+        load_medusa_sps=load_medusa_sps,
+        draft_from_trainable_param=args.draft_from_trainable_param
     )
 
     # 3. 初始化 Generator
@@ -85,7 +87,8 @@ def main():
         tasks=[args.task],
         num_fewshot=args.num_fewshot,
         limit=args.limit, # 限制样本数以便快速测试，跑全量设为 None
-        task_manager=task_manager
+        task_manager=task_manager,
+        log_samples=True 
     )
 
     # 6. 打印结果
@@ -97,6 +100,33 @@ def main():
             for metric, value in task_res.items():
                 if isinstance(value, float):
                     print(f"  {metric}: {value:.4f}")
+
+    # 7. 获取并打印模型生成的内容
+    print("\n" + "-"*30 + " Model Generations " + "-"*30)
+    if results is not None and "samples" in results:
+        # 获取对应任务的样本日志
+        task_samples = results["samples"].get(args.task, [])
+        
+        # 打印前 1 个样本的生成结果看看
+        for i, sample in enumerate(task_samples[:1]):
+            print(f"\n[Sample {i+1}]")
+            # 原始文档数据
+            # print(f"Doc: {sample['doc']}") 
+            
+            # 模型看到的完整 Prompt
+            # 通常在 sample['arguments'][0] 中，不同任务可能有细微差异
+            prompt = sample.get('arguments', [''])[0] 
+            print(f"Prompt:\n{prompt}")
+            
+            # 标准答案
+            print(f"Target: {sample.get('target', 'N/A')}")
+            
+            # 模型的原始输出（对于生成类任务是一段文本，对于选择题是各个选项的 log-likelihood）
+            print(f"Model Raw Output: {sample.get('resps', [])[0]}")
+            
+            # 如果任务包含后处理（比如提取选项A/B/C），这里会显示过滤后的输出
+            if 'filtered_resps' in sample:
+                 print(f"Filtered Output: {sample['filtered_resps'][0]}")
     
     # 7. 打印速度与 SpS/Medusa 指标
     tracker.print_summary(method=args.method)
